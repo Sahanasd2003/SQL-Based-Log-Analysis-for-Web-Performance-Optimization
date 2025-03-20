@@ -1,0 +1,63 @@
+import sqlite3
+import pandas as pd
+import matplotlib.pyplot as plt
+import re
+
+# Database setup
+def create_database():
+    conn = sqlite3.connect("logs.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT,
+            url TEXT,
+            status_code INTEGER,
+            response_time FLOAT,
+            timestamp TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Log parser
+def parse_log(log_file):
+    log_pattern = re.compile(r"(\d+.\d+.\d+.\d+) - - \[(.*?)\] \"GET (.*?) HTTP.*\" (\d+) (\d+)")
+    conn = sqlite3.connect("logs.db")
+    cursor = conn.cursor()
+    
+    with open(log_file, "r") as file:
+        for line in file:
+            match = log_pattern.match(line)
+            if match:
+                ip, timestamp, url, status_code, response_time = match.groups()
+                cursor.execute("INSERT INTO logs (ip, url, status_code, response_time, timestamp) VALUES (?, ?, ?, ?, ?)",
+                               (ip, url, int(status_code), float(response_time), timestamp))
+    
+    conn.commit()
+    conn.close()
+
+# Run analysis queries
+def analyze_data():
+    conn = sqlite3.connect("logs.db")
+    df = pd.read_sql_query("SELECT * FROM logs", conn)
+    conn.close()
+    return df
+
+# Visualize slow responses
+def plot_response_times():
+    df = analyze_data()
+    df_sorted = df.sort_values(by="response_time", ascending=False)[:10]
+    plt.figure(figsize=(10, 5))
+    plt.barh(df_sorted["url"], df_sorted["response_time"], color='red')
+    plt.xlabel("Response Time (ms)")
+    plt.ylabel("URL")
+    plt.title("Top 10 Slowest URLs")
+    plt.show()
+
+# Main execution
+if __name__ == "__main__":
+    create_database()
+    parse_log("access.log")  # Change with your actual log file
+    print("Log data inserted successfully.")
+    plot_response_times()
